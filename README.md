@@ -1,0 +1,1 @@
+# bom-generator-maven-plugin
