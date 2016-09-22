@@ -52,6 +52,7 @@ import org.eclipse.aether.graph.Exclusion;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.ArtifactDescriptorRequest;
 import org.eclipse.aether.resolution.ArtifactDescriptorResult;
+import org.eclipse.aether.resolution.ArtifactRequest;
 
 import me.nicolaferraro.bom.config.Bom;
 import me.nicolaferraro.bom.util.DependencyMatcher;
@@ -103,15 +104,19 @@ public class BomGeneratorMojo extends AbstractMojo {
     private List<Bom> boms;
 
     @Parameter
+    private List<String> preferences;
+
+    @Parameter
     private List<String> goals;
 
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
 
             Map<String, List<Dependency>> dependencies = resolveValidDependencies();
-            crossCheckDependencies(dependencies);
+            Set<String> resolved = crossCheckDependenciesAndResolve(dependencies);
 
             List<Dependency> finalDependencies = flatten(dependencies);
+            finalDependencies = applyResolution(finalDependencies, resolved);
 
             Document pom = loadBasePom();
             this.overwriteValues(pom, finalDependencies);
@@ -155,7 +160,7 @@ public class BomGeneratorMojo extends AbstractMojo {
             for (org.apache.maven.model.Dependency dep : project.getDependencyManagement().getDependencies()) {
                 Artifact artifact = new DefaultArtifact(dep.getGroupId(), dep.getArtifactId(), dep.getClassifier(), dep.getType(), dep.getVersion());
                 List<Exclusion> exclusions = new LinkedList<>();
-                for(org.apache.maven.model.Exclusion ex : dep.getExclusions()) {
+                for (org.apache.maven.model.Exclusion ex : dep.getExclusions()) {
                     Exclusion aexl = new Exclusion(ex.getGroupId(), ex.getArtifactId(), null, null);
                     exclusions.add(aexl);
                 }
@@ -169,7 +174,10 @@ public class BomGeneratorMojo extends AbstractMojo {
 
     private List<Dependency> resolveValidDependencies(Bom bom) throws Exception {
         getLog().info("Resolving " + bom + " to get managed dependencies ");
-        Artifact artifact = new DefaultArtifact(bom.getGroupId(), bom.getArtifactId(), null, bom.getVersion());
+        Artifact artifact = new DefaultArtifact(bom.getGroupId(), bom.getArtifactId(), "pom", bom.getVersion());
+
+        ArtifactRequest artifactRequest = new ArtifactRequest(artifact, remoteRepositories, null);
+        system.resolveArtifact(session, artifactRequest); // To get an error when the artifact does not exist
 
         ArtifactDescriptorRequest req = new ArtifactDescriptorRequest(artifact, remoteRepositories, null);
         ArtifactDescriptorResult res = system.readArtifactDescriptor(session, req);
@@ -198,44 +206,43 @@ public class BomGeneratorMojo extends AbstractMojo {
         return validDependencies;
     }
 
-    private void crossCheckDependencies(Map<String, List<Dependency>> dependencies) throws MojoFailureException {
+    private Set<String> crossCheckDependenciesAndResolve(Map<String, List<Dependency>> dependencies) throws MojoFailureException {
 
         // Build a version lookup table for faster check
-        Map<String, Map<String, String>> lookupTable = new HashMap<>();
+        Map<String, Map<String, Dependency>> lookupTable = new HashMap<>();
         for (String bom : dependencies.keySet()) {
-            Map<String, String> bomLookup = new HashMap<>();
+            Map<String, Dependency> bomLookup = new HashMap<>();
             lookupTable.put(bom, bomLookup);
 
             for (Dependency dependency : dependencies.get(bom)) {
                 String key = dependencyKey(dependency);
-                bomLookup.put(key, dependency.getArtifact().getVersion());
+                bomLookup.put(key, dependency);
             }
         }
 
-        Map<String, Set<String>> inconsistencies = new TreeMap<>();
+        Map<String, Set<VersionInfo>> inconsistencies = new TreeMap<>();
         Set<String> trueInconsistencies = new TreeSet<>();
 
         // Cross-check all dependencies
         for (String bom1 : dependencies.keySet()) {
-            for (Dependency dependency : dependencies.get(bom1)) {
-                String key = dependencyKey(dependency);
-                String version1 = dependency.getArtifact().getVersion();
+            for (Dependency dependency1 : dependencies.get(bom1)) {
+                String key = dependencyKey(dependency1);
+                String version1 = dependency1.getArtifact().getVersion();
 
                 for (String bom2 : dependencies.keySet()) {
-                    if (bom1.equals(bom2)) {
-                        continue;
-                    }
+                    // Some boms have conflicts with themselves
 
-                    String version2 = lookupTable.get(bom2).get(key);
+                    Dependency dependency2 = lookupTable.get(bom2).get(key);
+                    String version2 = dependency2 != null ? dependency2.getArtifact().getVersion() : null;
                     if (version2 != null) {
-                        Set<String> inconsistency = inconsistencies.get(key);
+                        Set<VersionInfo> inconsistency = inconsistencies.get(key);
                         if (inconsistency == null) {
                             inconsistency = new TreeSet<>();
                             inconsistencies.put(key, inconsistency);
                         }
 
-                        inconsistency.add(version1 + " in " + bom1);
-                        inconsistency.add(version2 + " in " + bom2);
+                        inconsistency.add(new VersionInfo(dependency1, bom1));
+                        inconsistency.add(new VersionInfo(dependency2, bom2));
 
                         if (!version2.equals(version1)) {
                             trueInconsistencies.add(key);
@@ -245,6 +252,24 @@ public class BomGeneratorMojo extends AbstractMojo {
             }
         }
 
+        // Try to solve with preferences
+        Set<String> resolvedInconsistencies = new TreeSet<>();
+        DependencyMatcher preferencesMatcher = new DependencyMatcher(this.preferences);
+        for (String key : trueInconsistencies) {
+            int preferred = 0;
+            for (VersionInfo nfo : inconsistencies.get(key)) {
+                if (preferencesMatcher.matches(nfo.getDependency())) {
+                    preferred++;
+                }
+            }
+
+            if (preferred == 1) {
+                resolvedInconsistencies.add(key);
+            }
+        }
+
+        trueInconsistencies.removeAll(resolvedInconsistencies);
+
         if (trueInconsistencies.size() > 0) {
             StringBuilder message = new StringBuilder();
             message.append("Found " + trueInconsistencies.size() + " inconsistencies in the generated BOM.\n");
@@ -252,15 +277,17 @@ public class BomGeneratorMojo extends AbstractMojo {
             for (String key : trueInconsistencies) {
                 message.append(key);
                 message.append(" has different versions:\n");
-                for (String v : inconsistencies.get(key)) {
+                for (VersionInfo nfo : inconsistencies.get(key)) {
                     message.append(" - ");
-                    message.append(v);
+                    message.append(nfo);
                     message.append("\n");
                 }
             }
 
             throw new MojoFailureException(message.toString());
         }
+
+        return resolvedInconsistencies;
     }
 
     private List<Dependency> flatten(Map<String, List<Dependency>> dependencies) {
@@ -273,6 +300,23 @@ public class BomGeneratorMojo extends AbstractMojo {
 
         Collections.sort(flatList, (d1, d2) -> dependencyKey(d1).compareTo(dependencyKey(d2)));
         return flatList;
+    }
+
+    private List<Dependency> applyResolution(List<Dependency> dependencies, Set<String> solvable) {
+        DependencyMatcher preferencesMatcher = new DependencyMatcher(this.preferences);
+        List<Dependency> res = new ArrayList<>();
+        for (Dependency dep : dependencies) {
+            String key = dependencyKey(dep);
+            if(solvable.contains(key)) {
+                if(preferencesMatcher.matches(dep)) {
+                    res.add(dep);
+                }
+            } else {
+                res.add(dep);
+            }
+        }
+
+        return res;
     }
 
     private Document loadBasePom() throws Exception {
@@ -517,5 +561,62 @@ public class BomGeneratorMojo extends AbstractMojo {
     private String dependencyKey(Dependency dependency) {
         Artifact artifact = dependency.getArtifact();
         return artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getExtension() + ":" + artifact.getClassifier();
+    }
+
+    private static class VersionInfo implements Comparable<VersionInfo> {
+
+        private Dependency dependency;
+
+        private String bom;
+
+        public VersionInfo(Dependency dependency, String bom) {
+            this.dependency = dependency;
+            this.bom = bom;
+        }
+
+        public Dependency getDependency() {
+            return dependency;
+        }
+
+        public void setDependency(Dependency dependency) {
+            this.dependency = dependency;
+        }
+
+        public String getBom() {
+            return bom;
+        }
+
+        public void setBom(String bom) {
+            this.bom = bom;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            VersionInfo that = (VersionInfo) o;
+
+            if (!dependency.getArtifact().getVersion().equals(that.dependency.getArtifact().getVersion())) return false;
+            return bom.equals(that.bom);
+
+        }
+
+        @Override
+        public int hashCode() {
+            int result = dependency.getArtifact().getVersion().hashCode();
+            result = 31 * result + bom.hashCode();
+            return result;
+        }
+
+        @Override
+        public int compareTo(VersionInfo versionInfo) {
+            return this.toString().compareTo(versionInfo.toString());
+        }
+
+        @Override
+        public String toString() {
+            return dependency.getArtifact().getVersion() + " in " + bom;
+        }
     }
 }

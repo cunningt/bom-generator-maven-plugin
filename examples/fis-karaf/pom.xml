@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>examples</artifactId>
+        <groupId>me.nicolaferraro.bom</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>fis-karaf</artifactId>
+    <packaging>pom</packaging>
+
+    <properties>
+        <fuse.version>6.3.0.redhat-191</fuse.version>
+        <fabric8.version>2.2.161</fabric8.version>
+
+        <preferred.javax-activation.version>1.1.1</preferred.javax-activation.version>
+        <preferred.plexus.version>3.0.22</preferred.plexus.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Additional dependencies -->
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>me.nicolaferraro.bom</groupId>
+                <artifactId>bom-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+
+                    <preferences>
+                        <preference>javax.activation:activation:${preferred.javax-activation.version}</preference><!-- Multiple versions, also in the same BOM (fabric8) -->
+                        <preference>org.codehaus.plexus:plexus-utils:${preferred.plexus.version}</preference><!-- Multiple versions, also in the same BOM (fabric8) -->
+                    </preferences>
+
+                    <boms>
+
+                        <!-- The order is not important, because the build fails in case of duplicates -->
+
+                        <bom>
+                            <groupId>org.jboss.fuse.bom</groupId>
+                            <artifactId>jboss-fuse-parent</artifactId>
+                            <version>${fuse.version}</version>
+                            <includes>
+                                <include>*:*</include>
+                            </includes>
+                            <excludes>
+                                <exclude>org.codehaus.plexus:plexus-utils:*</exclude> <!-- Using the one in fabric8 BOM -->
+                                <exclude>io.fabric8:fabric8-maven-plugin</exclude> <!-- Using version 2 of the plugin -->
+                                <exclude>org.jboss.arquillian.*:*</exclude> <!-- Using the newer version in fabric8 -->
+                                <exclude>org.jboss.shrinkwrap.*:*</exclude> <!-- Using the newer version in fabric8 -->
+                                <exclude>org.jboss.weld*:*</exclude> <!-- Using the newer version in fabric8 -->
+                            </excludes>
+                        </bom>
+                        <bom>
+                            <groupId>io.fabric8</groupId>
+                            <artifactId>fabric8-project-bom-with-platform-deps</artifactId>
+                            <version>${fabric8.version}</version>
+                            <includes>
+                                <include>*:*</include>
+                            </includes>
+                            <excludes>
+                                <exclude>javax.servlet:javax.servlet-api</exclude> <!-- Using the one in the fuse BOM -->
+
+                                <exclude>io.fabric8:cxf-utils</exclude>
+                                <exclude>io.fabric8:fabric8-agent</exclude>
+                                <exclude>io.fabric8:fabric8-apm</exclude>
+                                <exclude>io.fabric8:fabric8-cdi</exclude>
+                                <exclude>io.fabric8:fabric8-cxf-plugins</exclude>
+                                <exclude>io.fabric8:fabric8-cxf</exclude>
+                                <exclude>io.fabric8:fabric8-devops-connector</exclude>
+                                <exclude>io.fabric8:fabric8-jgroups</exclude>
+
+                                <exclude>io.fabric8:fabric8-profiles</exclude>
+                                <exclude>io.fabric8:fabric8-selenium</exclude>
+                                <exclude>io.fabric8:fabric8-springboot</exclude>
+                                <exclude>io.fabric8:fabric8-utils</exclude>
+                                <exclude>io.fabric8:gerrit-api</exclude>
+                                <exclude>io.fabric8:gitrepo-api</exclude>
+                                <exclude>io.fabric8:gitrepo-resteasy</exclude>
+                                <exclude>io.fabric8:hubot-api</exclude>
+                                <exclude>io.fabric8:jenkins-assertions</exclude>
+
+                                <exclude>io.fabric8:letschat-api</exclude>
+                                <exclude>io.fabric8:rest-utils</exclude>
+                                <exclude>io.fabric8:swagger-annotator</exclude>
+                                <exclude>io.fabric8:swagger-model</exclude>
+                                <exclude>io.fabric8:taiga-api</exclude>
+                            </excludes>
+                        </bom>
+                    </boms>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

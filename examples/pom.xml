@@ -14,8 +14,8 @@
 
     <modules>
         <module>basic-example</module>
-        <module>fuse-spring-boot</module>
-        <module>fuse-karaf</module>
+        <module>fis-spring-boot</module>
+        <module>fis-karaf</module>
     </modules>
 
 
