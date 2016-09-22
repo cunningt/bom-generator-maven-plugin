@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <parent>
+        <artifactId>examples</artifactId>
+        <groupId>me.nicolaferraro.bom</groupId>
+        <version>1.0-SNAPSHOT</version>
+    </parent>
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>fuse-spring-boot</artifactId>
+    <packaging>pom</packaging>
+
+    <properties>
+        <spring-boot.version>1.4.1.RELEASE</spring-boot.version>
+        <camel.version>2.18.0-SNAPSHOT</camel.version>
+        <fabric8.version>2.2.161</fabric8.version>
+        <spring-cloud-kubernetes.version>0.0.16</spring-cloud-kubernetes.version>
+        <spring-cloud.version>Brixton.SR4</spring-cloud.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Additional dependencies -->
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>me.nicolaferraro.bom</groupId>
+                <artifactId>bom-generator-maven-plugin</artifactId>
+                <version>${project.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <boms>
+                        <bom>
+                            <groupId>org.springframework.boot</groupId>
+                            <artifactId>spring-boot-dependencies</artifactId>
+                            <version>${spring-boot.version}</version>
+                            <includes>
+                                <include>*:*</include>
+                            </includes>
+                        </bom>
+                        <bom>
+                            <groupId>org.apache.camel</groupId>
+                            <artifactId>camel-spring-boot-dependencies</artifactId>
+                            <version>${camel.version}</version>
+                            <includes>
+                                <include>*:*</include>
+                            </includes>
+                        </bom>
+                        <bom>
+                            <groupId>io.fabric8</groupId>
+                            <artifactId>fabric8-project-bom-with-platform-deps</artifactId>
+                            <version>${fabric8.version}</version>
+                            <includes>
+                                <include>*:*</include>
+                            </includes>
+                            <excludes>
+                                <exclude>javax.servlet:javax.servlet-api</exclude>
+                            </excludes>
+                        </bom>
+                        <bom>
+                            <groupId>io.fabric8</groupId>
+                            <artifactId>spring-cloud-kubernetes-bom</artifactId>
+                            <version>${spring-cloud-kubernetes.version}</version>
+                            <includes>
+                                <include>*:*</include>
+                            </includes>
+                            <excludes>
+                                <exclude>io.fabric8:kubernetes-client</exclude>
+                            </excludes>
+                        </bom>
+                        <bom>
+                            <groupId>org.springframework.cloud</groupId>
+                            <artifactId>spring-cloud-dependencies</artifactId>
+                            <version>${spring-cloud.version}</version>
+                            <includes>
+                                <include>org.springframework.cloud*:*</include>
+                            </includes>
+                        </bom>
+                    </boms>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
